@@ -6,6 +6,14 @@ if [ "$(id -u)" -ne 0 ]; then
   exit 1
 fi
 
+
+##################################
+# Hotspot configuration
+nmcli device wifi hotspot ssid PPi password EGB439123 ifname wlan0
+hotspotUUID="$(nmcli --get-values connection.uuid c show Hotspot)"
+sudo nmcli connection modify $hotspotUUID connection.autoconnect yes
+
+
 ########################################################################################
 # Hostapd Configuration
 echo "Setting up hotspot configuration in hostapd"
