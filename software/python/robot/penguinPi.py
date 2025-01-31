@@ -163,7 +163,7 @@ class UART(object):
                 logging.error("--- caught serial port error")
 
 #create UART object
-uart = UART("/dev/serial0", 115200)
+uart = UART("/dev/ttyAMA0", 115200)
 
 
 def init():
