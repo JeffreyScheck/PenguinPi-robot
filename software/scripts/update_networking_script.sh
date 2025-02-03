@@ -7,13 +7,6 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 
-##################################
-# Hotspot configuration
-nmcli device wifi hotspot ssid PPi password EGB439123 ifname wlan0
-hotspotUUID="$(nmcli --get-values connection.uuid c show Hotspot)"
-sudo nmcli connection modify $hotspotUUID connection.autoconnect yes
-
-
 ########################################################################################
 # Hostapd Configuration
 echo "Setting up hotspot configuration in hostapd"
@@ -45,7 +38,13 @@ ieee80211d=1
 ########################################################################################
 # Replace wpa_supplicant.conf with the template file
 sudo mv /etc/wpa_supplicant/wpa_supplicant.conf /etc/wpa_supplicant/wpa_supplicant.conf.backup # Backup old file
-sudo cp wpa_supplicant_default.conf /etc/wpa_supplicant/wpa_supplicant.conf
+sudo cp wpa_supplicant_default.conf /etc/wpa_supplicant/wpa_supplicant.
+
+########################################################################################
+# Hotspot configuration
+nmcli device wifi hotspot ssid penguinpi:${MAC: -8} password EGB439123 ifname wlan0
+hotspotUUID="$(nmcli --get-values connection.uuid c show Hotspot)"
+sudo nmcli connection modify $hotspotUUID connection.autoconnect yes
 
 ########################################################################################
 echo "Done! Reboot is required"
