@@ -9,6 +9,8 @@ import cv2
 import numpy as np
 import argparse
 
+import signal
+
 
 class VideoStreamWidget(object):
     def __init__(self, src=0):
@@ -44,12 +46,17 @@ class PiBot(object):
         self.port = port
         self.localiser_ip = localiser_ip
         self.localiser_port = localiser_port
+        self.localiser_endpoint = None
+
+        self._signals = [signal.SIGINT,signal.SIGQUIT,signal.SIGTERM]
+        self._original_sig_handlers = [signal.getsignal(val) for val in self._signals]
+        self._enable_signals()
+
         self.endpoint = 'http://{}:{}'.format(self.ip, self.port)
         if localiser_ip is not None:
             self.localiser_endpoint = 'http://{}:{}'.format(localiser_ip, localiser_port)
             print('Localiser setup')
         else:
-            self.localiser_endpoint = None
             print('Note: localiser was not setup')
 
         self.camera = VideoStreamWidget('{}/camera/get'.format(self.endpoint))
@@ -57,6 +64,47 @@ class PiBot(object):
         while self.camera.frame is None:
             time.sleep(0.1)
         print('Got first camera image')
+
+
+    def __del__(self):
+        # Stop motors and close connection
+        try:
+            requests.get('{}/robot/stop'.format(self.endpoint), timeout=1,headers={"Connection":"close"})
+        except requests.exceptions.Timeout as e:
+            print('Timed out attempting to communicate with {}:{}'.format(self.ip, self.port), file=sys.stderr)
+        except requests.ConnectionError as e:
+            # No connection to close
+            pass
+        
+        # Close any connection to the localiser.
+        try:
+            if self.localiser_endpoint is not None:
+                requests.get('{}/pose/get?group={}'.format(self.localiser_endpoint, 0), timeout=1, headers={"Connection":"close"})
+        except requests.exceptions.Timeout as e:
+            print('Timed out attempting to communicate with {}:{}'.format(self.localiser_ip, self.localiser_port), file=sys.stderr)
+        except requests.ConnectionError as e:
+            # No connection to close
+            pass
+        
+        if hasattr(self,"camera"):
+            self.camera.capture.release()
+            del self.camera
+        
+        
+
+    def _handle_signals(self,sig,context):
+        self._clear_signals()
+        self.__del__() # Doesn't actually delete the object.
+        signal.raise_signal(sig)
+
+    def _enable_signals(self):
+        for sig,orig_func in zip(self._signals,self._original_sig_handlers):
+            if signal.getsignal(sig) == orig_func:
+                signal.signal(sig,lambda *args,**kwargs: self._handle_signals(*args))
+    def _clear_signals(self):
+        for sig,orig_func in zip(self._signals,self._original_sig_handlers):
+            signal.signal(sig,orig_func)
+        
 
     def setVelocity(self, motor_left=0, motor_right=0, duration=None, acceleration_time=None):
         try:
@@ -212,7 +260,7 @@ class PiBot(object):
             print('Timed out attempting to communicate with {}:{}'.format(self.localiser_ip, self.localiser_port), file=sys.stderr)
             return None
 
-    def getLocalizerPose(self, group_number):
+    def getLocalizerPose(self, group_number = 0):
         if self.localiser_endpoint is None:
             print('No localiser endpoint specified')
             return None
@@ -227,6 +275,7 @@ class PiBot(object):
  
 
 if __name__ == '__main__':
+
     parser = argparse.ArgumentParser(description='PiBot client')
     parser.add_argument('--ip', type=str, default='localhost', help='IP address of PiBot')
     parser.add_argument('--port', type=int, default=8080, help='Port of PiBot')
