@@ -314,7 +314,13 @@ class StreamingOutput(io.BufferedIOBase):
 
 @app.route('/camera/get')
 def picam():
-    return Response(gather_img(), mimetype='multipart/x-mixed-replace; boundary=frame')
+    if len(request.args) > 0:
+        global stream_output
+        frame = stream_output.frame
+        return Response(frame)
+    else:
+        return Response(gather_img(),mimetype='multipart/x-mixed-replace; boundary=frame')
+
 
 @app.route('/battery/get/voltage')
 def voltage():
@@ -664,36 +670,45 @@ def IPUpdateThread():
 
     eth_ip = None
     wlan_ip = None
-
-    while True:
+    global is_shutdown
+    BAD_IP = '0.0.0.0'
+    while not is_shutdown:
         log.debug('Checking for IP addresses')
         # set the IP address
+                
         for name in interfaces():
-            try:
-                if name == 'eth0':
+            if name == 'eth0':
+                try:
                     ip = ifaddresses(name)[AF_INET][0]['addr']
                     if ip != eth_ip:
                         log.debug('eth0 is %s' % ip)
                         hat.set_ip_eth(ip)
                         eth_ip = ip
-                elif name == 'wlan0':
+                except KeyError as e:
+                    eth_ip = BAD_IP
+                    hat.set_ip_eth(eth_ip)
+                    log.debug(e)
+            elif name == 'wlan0':
+                try:
                     ip = ifaddresses(name)[AF_INET][0]['addr']
                     if ip != wlan_ip:
                         log.debug('wlan0 is %s' % ip)
                         hat.set_ip_wlan(ip)
                         wlan_ip = ip
-            except KeyError as e:
-                log.debug(e)
+                except KeyError as e:
+                    wlan_ip = BAD_IP
+                    hat.set_ip_wlan(wlan_ip)
+                    log.debug(e)
+#            except KeyError as e:
+#                log.debug(e)
 
         # set the MAC address
         # do it every loop because wireless interface can be plugged in/out
         mac = getHwAddr('wlan0')
         hat.set_mac_wlan(mac)
 
-        time.sleep(20)
-        global is_shutdown
-        if is_shutdown:
-            break
+        time.sleep(5)
+
 
 """
 " Pose estimation thread

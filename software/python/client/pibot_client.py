@@ -10,24 +10,74 @@ import numpy as np
 import argparse
 
 import signal
+import multiprocessing as mp
 
+class bcolors:
+    HEADER = '\033[95m'
+    OKBLUE = '\033[94m'
+    OKCYAN = '\033[96m'
+    OKGREEN = '\033[92m'
+    WARNING = '\033[93m'
+    FAIL = '\033[91m'
+    ENDC = '\033[0m'
+    BOLD = '\033[1m'
+    UNDERLINE = '\033[4m'
+
+
+def print_coloured(text:str,colour_code:str,*args,**kwargs):
+    try:
+        print(colour_code + text + bcolors.ENDC,*args,**kwargs)
+    except KeyboardInterrupt as e:
+        raise KeyboardInterrupt
+    except Exception as e:
+        # For OS's that don't support the control characters.
+        print(text,*args,**kwargs)
 
 class VideoStreamWidget(object):
-    def __init__(self, src=0):
+    def __init__(self, src:int|str=0,refresh_rate:float=0.01):
+        self.src = src
+        self.refresh_rate = refresh_rate
         self.capture = cv2.VideoCapture(src)
-        self.frame = None
-        print('Opened capture, start thread')
-        # Start the thread to read frames from the video stream
-        self.thread = Thread(target=self.update, args=())
-        self.thread.daemon = True
-        self.thread.start()
+        self._frame = None
+        if not self.capture.isOpened():
+            # Attempt to open the capture with a different API. Mainly just to
+            # get around GStreamer.
+            self.capture.release()
+            self.capture = cv2.VideoCapture(src,apiPreference=cv2.CAP_FFMPEG)
+        
+        self._stream_available = self.capture.isOpened()
+
+        if self._stream_available:
+            print_coloured('Opened capture, start thread',bcolors.OKGREEN)
+            # Start the thread to read frames from the video stream
+            self.thread = Thread(target=self.update, args=())
+            self.thread.daemon = True
+            self._running = mp.Value('b',True)
+            self.thread.start()
+        else:
+            self.capture.release()
+            print_coloured("Failed to open streamed capture.",bcolors.WARNING)
+            try:
+                img = None
+                for attempt_num in range(10):
+                    img = self.frame
+                    if isinstance(img,np.ndarray):
+                        break
+                    print_coloured(f"Could not grab image. Attempt {attempt_num+1}/{10}",bcolors.WARNING)
+                if not isinstance(img,np.ndarray):
+                    print_coloured("Could not capture image.",bcolors.FAIL)
+            except KeyboardInterrupt as e:
+                raise e
+            except Exception as e:
+                print_coloured("Could not capture image.",bcolors.FAIL)
+        
 
     def update(self):
         # Read the next frame from the stream in a different thread
-        while True:
+        while self._running.value:
             if self.capture.isOpened():
-                (self.status, self.frame) = self.capture.read()
-            time.sleep(.01)
+                (self.status, self._frame) = self.capture.read()
+            time.sleep(self.refresh_rate)
 
     def show_frame(self):
         # Display frames in main program
@@ -37,9 +87,23 @@ class VideoStreamWidget(object):
             self.capture.release()
             cv2.destroyAllWindows()
             exit(1)
+    
+    def release(self):
+        self._running.value = False
+        self.thread.join()
+        self.capture.release()
 
-
-
+    @property
+    def frame(self):
+        if self._stream_available:
+            return self._frame
+        elif isinstance(self.src,str) and self.src.startswith("http"):
+            # Manually grab and decode the byte stream to get around cv2 failing
+            jpeg_buff = requests.get(self.src,params={"dummy":True}).content
+            numpy_jpeg = np.frombuffer(jpeg_buff,dtype=np.uint8)
+            frame = cv2.imdecode(numpy_jpeg,cv2.IMREAD_COLOR)
+            return frame
+            
 class PiBot(object):
     def __init__(self, ip='localhost', port=8080, localiser_ip=None, localiser_port=8080):
         self.ip = ip
@@ -48,59 +112,70 @@ class PiBot(object):
         self.localiser_port = localiser_port
         self.localiser_endpoint = None
 
-        self._signals = [signal.SIGINT,signal.SIGQUIT,signal.SIGTERM]
+        self._signals = [signal.SIGINT,signal.SIGTERM]
         self._original_sig_handlers = [signal.getsignal(val) for val in self._signals]
         self._enable_signals()
 
         self.endpoint = 'http://{}:{}'.format(self.ip, self.port)
         if localiser_ip is not None:
             self.localiser_endpoint = 'http://{}:{}'.format(localiser_ip, localiser_port)
-            print('Localiser setup')
+
+            num_attempts = 10
+            for attempt_num in range(num_attempts):
+                try:
+                    requests.get('{}/pose/get?group={}'.format(self.localiser_endpoint, 0), timeout=1)
+                    print_coloured('Localiser setup',bcolors.OKGREEN)
+                    break
+                except requests.exceptions.Timeout as e:
+                    print_coloured(f"Failed to communicate with localiser ({attempt_num+1}/{num_attempts}).",bcolors.WARNING)
+                    continue
+                except requests.ConnectionError as e:
+                    print_coloured("Could not connect to Localiser.",bcolors.FAIL)
+                    break
+                print_coloured("Could not connect to Localiser.",bcolors.FAIL)
         else:
-            print('Note: localiser was not setup')
+            print_coloured('Localiser was not setup.',bcolors.WARNING)
 
         self.camera = VideoStreamWidget('{}/camera/get'.format(self.endpoint))
+        # if self.camera.available:
         print('Wait for first camera image')
         while self.camera.frame is None:
             time.sleep(0.1)
-        print('Got first camera image')
-
+        print_coloured("Acquired image from camera.",bcolors.OKGREEN)
 
     def __del__(self):
         # Stop motors and close connection
         try:
             requests.get('{}/robot/stop'.format(self.endpoint), timeout=1,headers={"Connection":"close"})
         except requests.exceptions.Timeout as e:
-            print('Timed out attempting to communicate with {}:{}'.format(self.ip, self.port), file=sys.stderr)
+            print('Timed out attempting to communicate with {}:{}'.format(self.ip, self.port),bcolors.WARNING, file=sys.stderr)
         except requests.ConnectionError as e:
             # No connection to close
             pass
-        
+
         # Close any connection to the localiser.
         try:
             if self.localiser_endpoint is not None:
                 requests.get('{}/pose/get?group={}'.format(self.localiser_endpoint, 0), timeout=1, headers={"Connection":"close"})
         except requests.exceptions.Timeout as e:
-            print('Timed out attempting to communicate with {}:{}'.format(self.localiser_ip, self.localiser_port), file=sys.stderr)
+            print_coloured('Timed out attempting to communicate with {}:{}'.format(self.localiser_ip, self.localiser_port),bcolors.WARNING,file=sys.stderr)
         except requests.ConnectionError as e:
             # No connection to close
             pass
-        
+
         if hasattr(self,"camera"):
-            self.camera.capture.release()
-            del self.camera
-        
-        
+            self.camera.release()
+
 
     def _handle_signals(self,sig,context):
-        self._clear_signals()
         self.__del__() # Doesn't actually delete the object.
+        self._clear_signals()
         signal.raise_signal(sig)
 
     def _enable_signals(self):
         for sig,orig_func in zip(self._signals,self._original_sig_handlers):
             if signal.getsignal(sig) == orig_func:
-                signal.signal(sig,lambda *args,**kwargs: self._handle_signals(*args))
+                signal.signal(sig,lambda *args,**kwargs: self._handle_signal(*args))
     def _clear_signals(self):
         for sig,orig_func in zip(self._signals,self._original_sig_handlers):
             signal.signal(sig,orig_func)
@@ -314,3 +389,4 @@ if __name__ == '__main__':
     cv2.waitKey(0)
 
     bot.resetEncoder()
+
