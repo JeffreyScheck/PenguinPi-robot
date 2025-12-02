@@ -34,18 +34,22 @@ def print_coloured(text:str,colour_code:str,*args,**kwargs):
         print(text,*args,**kwargs)
 
 class VideoStreamWidget(object):
-    def __init__(self, src:int|str=0,refresh_rate:float=0.01):
+    def __init__(self, src:int|str=0,refresh_rate:float=0.01,skip_stream_testing:bool=False):
         self.src = src
         self.refresh_rate = refresh_rate
-        self.capture = cv2.VideoCapture(src)
         self._frame = None
-        if not self.capture.isOpened():
-            # Attempt to open the capture with a different API. Mainly just to
-            # get around GStreamer.
-            self.capture.release()
-            self.capture = cv2.VideoCapture(src,apiPreference=cv2.CAP_FFMPEG)
-        
-        self._stream_available = self.capture.isOpened()
+
+        if not skip_stream_testing:
+            self.capture = cv2.VideoCapture(src)
+            if not self.capture.isOpened():
+                # Attempt to open the capture with a different API. Mainly just to
+                # get around GStreamer.
+                self.capture.release()
+                self.capture = cv2.VideoCapture(src,apiPreference=cv2.CAP_FFMPEG)
+            
+            self._stream_available = self.capture.isOpened()
+        else:
+            self._stream_available = False
 
         if self._stream_available:
             print_coloured('Opened capture, start thread',bcolors.OKGREEN)
