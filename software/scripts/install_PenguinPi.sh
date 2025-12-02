@@ -9,7 +9,7 @@ fi
 # Download the git repo if using this script stand-alone
 cd /home/pi
 if [ ! -d "./PenguinPi-robot" ]; then
-	git clone -b pi5 https://github.com/qcr/PenguinPi-robot.git
+	git clone https://github.com/qcr/PenguinPi-robot.git
 fi
 
 
@@ -25,8 +25,10 @@ if ! grep -q "dtparam=uart=on" /boot/firmware/config.txt; then
 
 	# Create the crontab entry
 	crontab -l > tempCron
-	echo "@reboot python /home/pi/PenguinPi-robot/software/python/robot/ppweb.py >/dev/null 2>&1" >> tempCron
-	echo "@reboot python /home/pi/PenguinPi-robot/software/scripts/GPIOSoftShutdown.py >/dev/null 2>&1" >> tempCron
+	mkdir -p /var/log/pibot/ppweb
+	mkdir -p /var/log/pibot/GPIOSoftShutdown
+	echo "@reboot python /home/pi/PenguinPi-robot/software/python/robot/ppweb.py >/var/log/pibot/ppweb 2>&1" >> tempCron
+	echo "@reboot python /home/pi/PenguinPi-robot/software/scripts/GPIOSoftShutdown.py >/var/log/pibot/GPIOSoftShutdown 2>&1" >> tempCron
 	crontab tempCron
 	rm tempCron
 
