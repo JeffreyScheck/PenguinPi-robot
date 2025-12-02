@@ -8,7 +8,11 @@ from pibot_client import PiBot
 # robot. If you have issues, check which network you are on (Need to be on 
 # the EGB439 network, not QUT). Also check that you are using the correct conda
 # environment.
-bot = PiBot(ip="10.42.0.1")
+parser = argparse.ArgumentParser()
+parser.add_argument("--ip",type=str,default="10.42.0.1",help="The ip address of the pibot.")
+args = parser.parse_args()
+
+bot = PiBot(ip=args.ip)
 
 print(f'Voltage: {bot.getVoltage():.2f}V')
 print(f'Current: {bot.getCurrent():.2f}A')
