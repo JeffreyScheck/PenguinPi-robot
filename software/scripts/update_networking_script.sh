@@ -38,7 +38,7 @@ ieee80211d=1
 ########################################################################################
 # Replace wpa_supplicant.conf with the template file
 sudo mv /etc/wpa_supplicant/wpa_supplicant.conf /etc/wpa_supplicant/wpa_supplicant.conf.backup # Backup old file
-sudo cp wpa_supplicant_default.conf /etc/wpa_supplicant/wpa_supplicant.
+sudo cp wpa_supplicant_default.conf /etc/wpa_supplicant/wpa_supplicant.conf
 
 ########################################################################################
 # Hotspot configuration
