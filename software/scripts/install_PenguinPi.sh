@@ -27,8 +27,8 @@ if ! grep -q "dtparam=uart=on" /boot/firmware/config.txt; then
 	crontab -l > tempCron
 	mkdir -p /var/log/pibot/ppweb
 	mkdir -p /var/log/pibot/GPIOSoftShutdown
-	echo "@reboot python /home/pi/PenguinPi-robot/software/python/robot/ppweb.py >/var/log/pibot/ppweb 2>&1" >> tempCron
-	echo "@reboot python /home/pi/PenguinPi-robot/software/scripts/GPIOSoftShutdown.py >/var/log/pibot/GPIOSoftShutdown 2>&1" >> tempCron
+	echo "@reboot python /home/pi/PenguinPi-robot/software/python/robot/ppweb.py >/home/pi/PenguinPi-robot/logs/ppwebLog.txt 2>&1" >> tempCron
+	echo "@reboot python /home/pi/PenguinPi-robot/software/scripts/GPIOSoftShutdown.py >/home/pi/PenguinPi-robot/logs/shutdownLog.txt 2>&1" >> tempCron
 	crontab tempCron
 	rm tempCron
 

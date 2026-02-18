@@ -148,28 +148,34 @@ class PiBot(object):
         print_coloured("Acquired image from camera.",bcolors.OKGREEN)
 
     def __del__(self):
-        # Stop motors and close connection
         try:
-            requests.get('{}/robot/stop'.format(self.endpoint), timeout=1,headers={"Connection":"close"})
-        except requests.exceptions.Timeout as e:
-            print('Timed out attempting to communicate with {}:{}'.format(self.ip, self.port),bcolors.WARNING, file=sys.stderr)
-        except requests.ConnectionError as e:
-            # No connection to close
+            # Stop motors and close connection
+            try:
+                requests.get('{}/robot/stop'.format(self.endpoint), timeout=1,headers={"Connection":"close"})
+            except requests.exceptions.Timeout as e:
+                print('Timed out attempting to communicate with {}:{}'.format(self.ip, self.port),bcolors.WARNING, file=sys.stderr)
+            except requests.ConnectionError as e:
+                # No connection to close
+                pass
+
+            # Close any connection to the localiser.
+            try:
+                if self.localiser_endpoint is not None:
+                    requests.get('{}/pose/get?group={}'.format(self.localiser_endpoint, 0), timeout=1, headers={"Connection":"close"})
+            except requests.exceptions.Timeout as e:
+                print_coloured('Timed out attempting to communicate with {}:{}'.format(self.localiser_ip, self.localiser_port),bcolors.WARNING,file=sys.stderr)
+            except requests.ConnectionError as e:
+                # No connection to close
+                pass
+
+            if hasattr(self,"camera"):
+                self.camera.release()
+        except ImportError:
+            # At program end, something sometimes gets halted and produces an import error.
+            # Ignore the error since the program is ending anyway.
+            # Without this, the error message gets printed, and leads to confusion among students
+            # as it looks like their program crashed when it actually finished executing gracefully.
             pass
-
-        # Close any connection to the localiser.
-        try:
-            if self.localiser_endpoint is not None:
-                requests.get('{}/pose/get?group={}'.format(self.localiser_endpoint, 0), timeout=1, headers={"Connection":"close"})
-        except requests.exceptions.Timeout as e:
-            print_coloured('Timed out attempting to communicate with {}:{}'.format(self.localiser_ip, self.localiser_port),bcolors.WARNING,file=sys.stderr)
-        except requests.ConnectionError as e:
-            # No connection to close
-            pass
-
-        if hasattr(self,"camera"):
-            self.camera.release()
-
 
     def _handle_signals(self,sig,context):
         self.__del__() # Doesn't actually delete the object.
